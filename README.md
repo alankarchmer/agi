@@ -5,7 +5,7 @@ Reference implementation of the Active Strange Loop (ASL) architecture in PyTorc
 ## Layout
 
 - `models/`: RSSM, attractor dynamics, macro-state flow, JOOTS controller
-- `training/`: phased trainers (phase1-phase5)
+- `training/`: phased trainers (phase1-phase6 + real-data variants)
 - `envs/`: RandomWalk1D, T-Maze, non-stationary gridworld, ambiguity-trap environments
 - `optim/`: adaptive optimizer (Adam + SAM hooks + SGLD noise)
 - `benchmarks/`: strict multi-seed benchmark harness with confidence intervals
@@ -19,6 +19,71 @@ Reference implementation of the Active Strange Loop (ASL) architecture in PyTorc
 - `scripts/run_real_benchmarks.py`: multi-seed real-data benchmark harness with CI thresholds
 - `scripts/check_real_benchmark_regression.py`: regression gate against locked baseline benchmark JSON
 - `tests/`: unit and integration tests
+
+## Model Architecture
+
+ASL is a layered world-model architecture. Instead of learning one monolithic latent space, it learns:
+- a **micro-level predictive model** (`h_t`, `z_t`) for moment-to-moment dynamics,
+- a **stability layer** (`sigma_t`) that settles noisy micro-states,
+- a **macro-level state** (`y_t`) used for higher-level consistency and loop closure.
+
+### Architecture at a glance
+
+```mermaid
+flowchart LR
+  O["Observation x_t"] --> WM["L1 World Model (Gaussian RSSM)"]
+  A["Action a_{t-1}"] --> WM
+  WM --> M["Micro state [h_t, z_t]"]
+  M --> AD["L2 Attractor Dynamics"]
+  AD --> S["Settled state sigma_t"]
+  S --> NIS["L3 NIS Macro Flow"]
+  NIS --> Y["Macro state y_t"]
+  Y --> FB["Loop closure feedback"]
+  FB --> WM
+  WM --> EFE["EFE Action Scoring"]
+  EFE --> P["Selected action a_t"]
+  J["JOOTS Controller"] --> EFE
+  J --> WM
+```
+
+### Components
+
+1. `models/rssm.py` (`GaussianRSSM`, level L1)
+   - Core recurrent state-space model with deterministic memory (`h_t`) and stochastic latent state (`z_t`).
+   - Learns a prior/posterior latent distribution each step and optimizes VFE-style losses (reconstruction + KL).
+   - Includes policy, reward, and value heads used by imagined planning (`EFEScorer`).
+   - Supports vector or image observations, discrete or continuous actions, and optional normalization.
+
+2. `models/attractor.py` (`AttractorDynamics`, level L2)
+   - Takes micro-state features (`[h_t, z_t]`) and iteratively "settles" them to a stable attractor state (`sigma_t`).
+   - Adds spectral-radius control to keep dynamics stable and prevent exploding recurrent behavior.
+   - Provides a micro-state reconstruction path used as an additional consistency signal.
+
+3. `models/nis.py` (`NISMacroState` + `MacroTransition`, level L3)
+   - Uses an invertible flow to map attractor state into:
+     - macro variables (`y_t`) and
+     - residual/noise variables (`z_noise`).
+   - Trains a macro transition model over `y_t` and measures directional information-flow proxies (dEI).
+   - Enables intervention/audit-style checks in Phase 6 by comparing proxy and audit signals.
+
+4. `models/joots.py` (`JOOTSController`)
+   - Watches training signals (VFE trend, gradient SNR proxy, attractor residual).
+   - Detects stagnation and triggers controlled escapes:
+     - mild: increase exploration temperature / force epistemic foraging,
+     - severe: optimizer perturbations (SGLD noise, temporary SAM mode).
+   - Supports cooldown and recovery logic so escapes are bounded and reversible.
+
+### How the loop closes
+
+- Early phases learn components mostly separately (world model -> attractor -> macro).
+- In Phase 5, macro state `y_t` is fed back into the world-model encoder, creating the "strange loop."
+- In Phase 6, sigma-prior coupling is ramped in stages; each stage is gate-checked and can be retried/rolled back.
+
+### Why this design is different
+
+- **Hierarchical state**: separate micro (`h,z`), meso (`sigma`), and macro (`y`) representations.
+- **Reliability-first training**: staged non-regression gates, CI-based checks, checkpointed stage artifacts.
+- **Built-in anti-stagnation control**: JOOTS is part of the training loop, not an external script.
 
 ## Quickstart
 
