@@ -1,0 +1,112 @@
+name: Nightly Benchmarks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  benchmark-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run Phase6 full benchmark gates
+        run: |
+          python scripts/run_benchmarks.py \
+            --profile phase6 \
+            --mode full \
+            --output runs/benchmarks/nightly_full_summary.json
+
+      - name: Upload nightly benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-nightly-full-summary
+          path: runs/benchmarks/nightly_full_summary.json
+
+  benchmark-real-data-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: benchmark-full
+    env:
+      ASL_REAL_REFERENCE_CHECKPOINT_URL: ${{ secrets.ASL_REAL_REFERENCE_CHECKPOINT_URL }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[hf]"
+
+      - name: Download locked reference checkpoint
+        run: |
+          if [[ -z "${ASL_REAL_REFERENCE_CHECKPOINT_URL}" ]]; then
+            echo "Missing required secret ASL_REAL_REFERENCE_CHECKPOINT_URL"
+            exit 1
+          fi
+
+          BASELINE_DIR="runs/baselines"
+          MODEL_PATH="${BASELINE_DIR}/phase6_real_pusht_v1_model.pt"
+          EXPECTED_SHA="$(cat configs/baselines/phase6_real_pusht_v1.model.sha256)"
+
+          mkdir -p "${BASELINE_DIR}"
+          curl --fail --location --retry 3 "${ASL_REAL_REFERENCE_CHECKPOINT_URL}" -o "${MODEL_PATH}"
+          echo "${EXPECTED_SHA}  ${MODEL_PATH}" | sha256sum -c -
+
+      - name: Fetch and convert lerobot/pusht dataset
+        run: |
+          python scripts/convert_lerobot_pusht.py \
+            --dataset-id lerobot/pusht \
+            --split train \
+            --output-dir data/lerobot_pusht_npz
+
+      - name: Run real-data nightly benchmark (locked reference checkpoint)
+        run: |
+          python scripts/run_real_benchmarks.py \
+            --profile pusht \
+            --data-source data/lerobot_pusht_npz \
+            --action-space-type continuous \
+            --action-dim 2 \
+            --obs-likelihood gaussian \
+            --seeds 7,11,19,23,29 \
+            --device cpu \
+            --steps 600 \
+            --output runs/benchmarks/nightly_real_data_summary.json \
+            --reference-checkpoint runs/baselines/phase6_real_pusht_v1_model.pt \
+            --checkpoint-mode strict
+
+      - name: Check regression vs locked baseline benchmark
+        run: |
+          python scripts/check_real_benchmark_regression.py \
+            --candidate runs/benchmarks/nightly_real_data_summary.json \
+            --baseline configs/baselines/phase6_real_pusht_v1.benchmark.json \
+            --output runs/benchmarks/nightly_real_data_regression.json
+
+      - name: Upload nightly real-data benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-nightly-real-data-summary
+          path: |
+            runs/benchmarks/nightly_real_data_summary.json
+            runs/benchmarks/nightly_real_data_regression.json

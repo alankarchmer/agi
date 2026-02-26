@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asl-v1"
+version = "0.1.0"
+description = "Active Strange Loop (ASL) architecture reference implementation"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "torch>=2.2",
+  "gymnasium>=0.29",
+  "numpy>=1.26",
+  "tensorboard>=2.15",
+  "pytest>=8.0",
+]
+
+[project.optional-dependencies]
+minigrid = ["minigrid>=2.3"]
+wandb = ["wandb>=0.16"]
+hf = ["datasets>=2.20"]
+dev = [
+  "pytest-cov>=5.0",
+  "ruff>=0.6",
+  "mypy>=1.10",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = [
+  "ignore:Gym has been unmaintained since 2022.*:UserWarning",
+  "ignore:The pynvml package is deprecated.*:FutureWarning",
+]
+
+[tool.setuptools.packages.find]
+include = ["benchmarks*", "envs*", "models*", "optim*", "training*", "utils*"]

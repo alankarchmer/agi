@@ -1,0 +1,99 @@
+seed: 7
+device: cpu
+enable_macro_feedback: false
+
+model:
+  hidden_dim: 128
+  latent_dim: 32
+  attractor_dim: 64
+  macro_dim: 16
+
+optim:
+  lr_l1: 3.0e-4
+  lr_l2: 1.0e-3
+  lr_l3: 1.0e-4
+  grad_clip_norm: 1.0
+
+data:
+  source: null
+  format: auto
+  action_space_type: discrete
+  action_dim: null
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  seq_len: 32
+  stride: 1
+  batch_size: 32
+  include_partial_windows: true
+  normalize_obs: true
+  normalize_action: false
+
+offline_online:
+  offline_steps: 1000
+  online_steps: 200
+  online_fraction: 0.2
+  replay_capacity_steps: 200000
+  collect_steps_per_iter: 1000
+
+infra:
+  use_amp: false
+  grad_accum_steps: 1
+  early_stop_patience: 20
+  early_stop_min_delta: 1.0e-4
+  checkpoint_every: 100
+  max_checkpoints: 5
+  config_version: phase6-realdata-v1
+
+eval:
+  nll_max: 2.0
+  kl_min: 0.01
+  kl_max: 5.0
+  ood_drift_max: 0.25
+  intervention_trend_min_spearman: 0.30
+
+phase1:
+  steps: 500
+  batch_size: 32
+  beta_start: 0.1
+  beta_end: 1.0
+  beta_anneal_frac: 0.2
+
+phase2:
+  steps: 300
+  batch_size: 32
+  lambda_spec: 1.0
+  target_radius: 0.95
+
+phase3:
+  steps: 300
+  batch_size: 32
+  alpha_dei: 0.1
+
+phase4:
+  steps: 300
+  batch_size: 32
+  alpha_dei: 0.05
+  attr_loss_weight: 0.5
+  macro_loss_weight: 0.5
+
+phase5:
+  steps: 300
+  batch_size: 32
+  beta: 1.0
+  macro_align_weight: 0.25
+
+phase6:
+  sigma_ramp_weights: [0.0, 0.25, 0.5, 0.75, 1.0]
+  sigma_stage_steps: 120
+  batch_size: 32
+  ei_audit_interval: 50
+  ei_audit_samples: 256
+  ei_interventions_per_dim: 16
+  jooots_cooldown_steps: 25
+  jooots_max_triggers_per_window: 4
+  max_vfe_regression: 0.05
+  max_tmaze_ci_drop: 0.05
+  min_proxy_audit_spearman: 0.30
+  tmaze_eval_seeds: [7, 11]
+  tmaze_eval_episodes: 24

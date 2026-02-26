@@ -1,0 +1,25 @@
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Packaging
+*.egg-info/
+build/
+dist/
+
+# Experiment artifacts
+runs/
+
+# Optional local datasets
+# data/lerobot_pusht_npz/
